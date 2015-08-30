@@ -134,7 +134,9 @@ class Structures_BibTex
      * @var string
      */
     var $authorstring;
-     
+
+    var $tex_chars;
+   
     /**
      * Constructor
      *
@@ -159,6 +161,10 @@ class Structures_BibTex
             'wordWrapCut'       => 0,
             'removeCurlyBraces' => false,
             'extractAuthors'    => true,
+            'extractEditors'    => true,
+            'extractPages'      => true,
+            'removeTeXSymbols'  => false,
+            'parseMonth'        => false,
         );
         foreach ($options as $option => $value) {
             $this->setOption($option, $value);
@@ -182,6 +188,39 @@ class Structures_BibTex
             'unpublished'
         );
         $this->authorstring = 'VON LAST, JR, FIRST';
+	
+	$this->tex_chars = array(
+		array("\\\\", "\\"),
+		array("\#", "#"),
+		array("\$", "$"),
+		array("\%", "%"),
+		array("\^", "^"),
+		array("\&", "&"),
+		array("\_", "_"),
+		array("\{", "{"),
+		array("\}", "}"),
+		array("{\\\"a}", "ä"),
+		array("\\\"a", "ä"),
+		array("{\\\"o}", "ö"),
+		array("\\\"o", "ö"),
+		array("{\\\"u}", "ü"),
+		array("\\\"u", "ü"),
+		array("{\\\"A}", "Ä"),
+		array("\\\"A", "Ä"),
+		array("{\\\"O}", "Ö"),
+		array("\\\"O", "Ö"),
+		array("{\\\"U}", "Ü"),
+		array("\\\"U", "Ü"),
+		array("{\\'e}", "é"),
+		array("\\'e", "é"),
+		array("{\\'E}", "É"),
+		array("\\'E", "É"),
+		array("{\\ss}", "ß"),
+		array("\\ss", "ß"),
+		array("\\\"", "\""),
+		array("--", "—"),
+	);
+
     }
 
     /**
@@ -265,6 +304,8 @@ class Structures_BibTex
                     $valid = false;
                 }
                 if (0 == $open) { //End of entry
+                    //append last closing brace:
+                    //$buffer .= $char;
                     $entry     = false;
                     $entrydata = $this->_parseEntry($buffer);
                     if (!$entrydata) {
@@ -350,6 +391,8 @@ class Structures_BibTex
         $entrycopy = '';
         if ($this->_options['validate']) {
             $entrycopy = $entry; //We need a copy for printing the warnings
+            //Dirty Hack:
+            $entrycopy .= '}';
         }
         $ret = array();
         if ('@string' ==  strtolower(substr($entry, 0, 7))) {
@@ -404,6 +447,9 @@ class Structures_BibTex
                 if ($this->_options['removeCurlyBraces']) {
                     $value = $this->_removeCurlyBraces($value);
                 }
+		if ($this->_options['removeTeXSymbols']) {
+                    $value = $this->_untex($value);
+                }
                 $position    = strrpos($entry, ',');
                 $field       = strtolower(trim(substr($entry, $position+1)));
                 $ret[$field] = $value;
@@ -425,6 +471,20 @@ class Structures_BibTex
             if (in_array('author', array_keys($ret)) && $this->_options['extractAuthors']) {
                 $ret['author'] = $this->_extractAuthors($ret['author']);
             }
+            //Handling the editors
+            if (in_array('editor', array_keys($ret)) && $this->_options['extractEditors']) {
+                $ret['editor'] = $this->_extractAuthors($ret['editor']);
+            }
+	    //Handling the month
+            if (in_array('month', array_keys($ret)) && $this->_options['parseMonth']) {
+                $ret['month'] = $this->_parseMonth($ret['month']);
+            }
+	    //Handling the pages
+            if (in_array('pages', array_keys($ret)) && $this->_options['extractPages']) {
+                $ret['pages'] = $this->_extractPages($ret['pages']);
+            }
+            //Saving copy of entry
+	    $ret['entry_copy'] = $entrycopy;
         }
         return $ret;
     }
@@ -619,6 +679,7 @@ class Structures_BibTex
     function _extractAuthors($entry) {
         $entry       = $this->_unwrap($entry);
         $authorarray = array();
+	$entry       = str_replace(' AND ', ' and ', $entry);
         $authorarray = explode(' and ', $entry);
         for ($i = 0; $i < sizeof($authorarray); $i++) {
             $author = trim($authorarray[$i]);
@@ -748,6 +809,14 @@ class Structures_BibTex
             $authorarray[$i] = array('first'=>trim($first), 'von'=>trim($von), 'last'=>trim($last), 'jr'=>trim($jr));
         }
         return $authorarray;
+    }
+
+    function _extractPages($entry){
+	$pages = array();
+	$entry = str_replace('--','—',$entry);
+	$pages['from'] = explode('—', $entry)[0];
+        $pages['to'] = explode('—', $entry)[1];
+	return $pages;
     }
 
     /**
@@ -962,6 +1031,32 @@ class Structures_BibTex
         return trim($ret);
     }
 
+    function _formatAuthors($array){
+	$ret = '';
+	foreach( $array as $author){
+		if(end($array) === $author && sizeof($array)>1){
+                        $ret .= 'and ';
+                }
+		$authorret = '';
+        	if(array_key_exists('first',$author)){
+                	$authorret .= ' '.$author['first'];
+        	}
+        	if(array_key_exists('von',$author)){
+                	$authorret .= ' '.$author['von'];
+       	 	}
+        	if(array_key_exists('last',$author)){
+                	$authorret .= ' '.$author['last'];
+        	}
+        	if(array_key_exists('jr',$author)){
+                	$authorret .= ' '.$author['jr'];
+        	}
+		$ret .= trim($authorret);
+		if(end($array) !== $author){
+                        $ret .= ', ';
+                }
+	}
+	return($ret);
+    }
     /**
      * Converts the stored BibTex entries to a BibTex String
      *
@@ -981,7 +1076,7 @@ class Structures_BibTex
                 if ($this->_options['wordWrapWidth']>0) {
                     $val = $this->_wordWrap($val);
                 }
-                if (!in_array($key, array('cite','entryType','author'))) {
+                if (!in_array($key, array('entry_copy','cite','entryType','author','editor','pages'))) {
                     $bibtex .= "\t".$key.' = {'.$this->_escape_tex($val)."},\n";
                 }
             }
@@ -996,13 +1091,163 @@ class Structures_BibTex
                 } else {
                     $author = $entry['author'];
                 }
-            } else {
-                $author = '';
+            $bibtex .= "\tauthor = {".$this->_escape_tex($author)."},\n";
+	    }
+	    //Editor
+            if (array_key_exists('editor', $entry)) {
+                if ($this->_options['extractEditors']) {
+                    $tmparray = array(); //In this array the authors are saved and the joind with an and
+                    foreach ($entry['editor'] as $editorentry) {
+                        $tmparray[] = $this->_formatAuthor($editorentry);
+                    }
+                    $editor = join(' AND ', $tmparray);
+                } else {
+                    $editor = $entry['editor'];
+                }
+		$bibtex .= "\teditor = {".$this->_escape_tex($editor)."},\n";
             }
-            $bibtex .= "\tauthor = {".$this->_escape_tex($author)."}\n";
+            //Pages
+            if (array_key_exists('pages', $entry)) {
+                if ($this->_options['extractPages']) {
+                    $pages = $entry['pages']['from'].'--'.$entry['pages']['to'];
+                } else {
+                    $pages = $entry['pages'];
+                }
+                $bibtex .= "\tpages = {".$pages."},\n";
+            }
             $bibtex.="}\n\n";
         }
         return $bibtex;
+    }
+
+    function bibTex_original()
+    {
+	$bibtex = '';
+        foreach ($this->data as $entry) {
+		$bibtex .= $entry['entry_copy']."\n\n";
+    	}
+	return $bibtex;
+    }
+
+    function filterKey($cite)
+    {
+        return array_filter($this->data, function($elem) use($cite){
+                        if(!array_key_exists('cite', $elem))
+                                return false;
+                        return (in_array($elem['cite'], $cite));
+                });
+    }
+
+    function filterYear($year)
+    {
+        return array_filter($this->data, function($elem) use($year){
+		        if(!array_key_exists('year', $elem))
+		                return false;
+		        return (in_array($elem['year'], $year));
+		});
+    }
+
+    function getYears()
+    {
+	$years = array();
+	foreach($this->data as $entry){
+        	if(array_key_exists('year', $entry) && !in_array($entry['year'], $years)){
+                	array_push($years, $entry['year']);
+       		 }
+	}
+	sort($years);
+	return $years;
+    } 
+
+    function filterEntryType($type)
+    {
+        return array_filter($this->data, function($elem) use($type){
+                        if(!array_key_exists('entrysubtype', $elem)){
+                            if(!array_key_exists('entryType', $elem))
+                                    return false;
+                            return (in_array($elem['entryType'], $type));
+                        }
+                        else{
+                            return (in_array($elem['entrysubtype'], $type));
+                        }
+                });
+    }
+    
+    function filterLanguage($language)
+    {
+        return array_filter($this->data, function($elem) use($language){
+                        if(!array_key_exists('langid', $elem)){
+                            if(!array_key_exists('language', $elem)){
+                                return false;
+                            }
+                            else{
+                                return ($elem['language'] == $language);
+                            }
+                        }
+                        else{
+                            return ($elem['langid'] == $language);
+                        }
+                });
+    }
+
+    function getEntryTypes()
+    {
+        $entryTypes = array();
+	    foreach($this->data as $entry){
+	        if(array_key_exists('entrysubtype', $entry) && !in_array($entry['entrysubtype'], $entryTypes)){
+	            array_push($entryTypes, $entry['entrysubtype']);
+	        }
+        	else if(array_key_exists('entryType', $entry) && !in_array($entry['entryType'], $entryTypes)){
+                	array_push($entryTypes, $entry['entryType']);
+        	}
+	}
+	sort($entryTypes);
+	return $entryTypes;
+    }
+
+    function getLanguages()
+    {
+        $languages = array();
+	    foreach($this->data as $entry){
+        	if(array_key_exists('language', $entry) && !in_array($entry['language'], $languages)){
+                	array_push($languages, $entry['language']);
+        	}
+        	if(array_key_exists('langid', $entry) && !in_array($entry['langid'], $languages)){
+                	array_push($languages, $entry['langid']);
+        	}
+	}
+	sort($languages);
+	return $languages;
+    }
+
+    function getAuthors()
+    {
+        $authors = array();
+        foreach($this->data as $entry){
+                if(array_key_exists('author', $entry)){
+			foreach($entry['author'] as $author){
+				if(!in_array($author, $authors)){
+                        		array_push($authors, $author);
+				}
+			}
+                }
+        }
+        return $authors;
+    }
+
+    function getEditors()
+    {
+        $editors = array();
+        foreach($this->data as $entry){
+                if(array_key_exists('editor', $entry)){
+                        foreach($entry['editor'] as $editor){
+                                if(!in_array($editor, $editors)){
+                                        array_push($editors, $editor);
+                                }
+                        }
+                }
+        }
+        return $editors;
     }
 
     /**
@@ -1140,7 +1385,11 @@ class Structures_BibTex
                 }
             }
             if ((''!=$title) || (''!=$journal) || (''!=$year) || (''!=$authors)) {
-                $line = str_replace("TITLE", $title, $line);
+                $title = htmlentities($title);
+		$journal = htmlentities($journal);
+		$year = htmlentities($year);
+		$authors = htmlentities($authors);
+		$line = str_replace("TITLE", $title, $line);
                 $line = str_replace("JOURNAL", $journal, $line);
                 $line = str_replace("YEAR", $year, $line);
                 $line = str_replace("AUTHORS", $authors, $line);
@@ -1171,16 +1420,61 @@ class Structures_BibTex
      */
     function _escape_tex($tex)
     {
-        $tex = str_replace("\\", "\\\\", $tex);
-        $tex = str_replace('#', '\#', $tex);
-        $tex = str_replace('$', '\$', $tex);
-        $tex = str_replace('%', '\%', $tex);
-        $tex = str_replace('^', '\^', $tex);
-        $tex = str_replace('&', '\&', $tex);
-        $tex = str_replace('_', '\_', $tex);
-        $tex = str_replace('{', '\{', $tex);
-        $tex = str_replace('}', '\}', $tex);
+	foreach($this->tex_chars as $char){
+                $tex = str_replace($char[1], $char[0], $tex);
+        }
         return($tex);
+    }
+
+    /**
+     * Returns a string with special TeX characters replaced.
+     *
+     * This method is to be used with any method which is importing TeX, such 
+     * as the bibTex method. A series of string replace operations are 
+     * performed on the input string, and the replaced string is returned.
+     * 
+     * @author Till Steinbach <till.steinbach@haw-hamburg.de>
+     * 
+     * @access private
+     * @param string $txt the TeX string
+     * @return string the TeX string without tex escaped characters
+     */
+    function _untex($tex)
+    {
+        foreach($this->tex_chars as $char){
+		$tex = str_replace($char[0], $char[1], $tex);
+	}
+	return($tex);
+    }
+
+    function _parseMonth($month)
+    {
+        if($month == 'jan')
+		return(1);
+        if($month == 'feb')
+                return(2);
+        if($month == 'mar')
+                return(3);
+        if($month == 'apr')
+                return(4);
+        if($month == 'may')
+                return(5);
+        if($month == 'jun')
+                return(6);
+        if($month == 'jul')
+                return(7);
+        if($month == 'aug')
+                return(8);
+        if($month == 'sep')
+                return(9);
+        if($month == 'oct')
+                return(10);
+        if($month == 'nov')
+                return(11);
+        if($month == 'dec')
+                return(12);
+	else
+		return(0);
     }
 }
 ?>

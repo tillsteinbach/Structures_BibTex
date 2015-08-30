@@ -11,7 +11,7 @@
   <active>yes</active>
  </lead>
  <date>2012-01-26</date>
- <time>12:16:32</time>
+ <time>01:48:08</time>
  <version>
   <release>1.0.0RC6</release>
   <api>1.0.0RC6</api>
@@ -32,9 +32,12 @@ Bug #16010 TeX special characters should be escaped in BibTeX exports
   <dir baseinstalldir="/" name="/">
    <file baseinstalldir="Structures/" md5sum="244bdd4c13f68602ff93bd77e1a7b419" name="docs/examples/Structures_BibTex_example.php" role="doc" />
    <file baseinstalldir="/" md5sum="ec2a96b52dfcc30f963e81eeaffc0bf4" name="Structures/BibTex.php" role="php" />
+   <file baseinstalldir="/" md5sum="ec2a96b52dfcc30f963e81eeaffc0bf4" name="Structures/BibTex_Formater.php" role="php" />
    <file baseinstalldir="/" md5sum="999f985d139f0a2da86492bf85f98483" name="Structures/BibTex/Exception.php" role="php" />
    <file baseinstalldir="Structures/" md5sum="80af49b95b9ed48db00ed862b13aad2f" name="tests/BibTexTest.php" role="test" />
    <file baseinstalldir="/" md5sum="45a18b527da72355a0eca3c9efe4cb0e" name="README" role="data" />
+   <file baseinstalldir="/" md5sum="45a18b527da72355a0eca3c9efe4cb0e" name="Structures/locale/de_DE.utf8/messages.mo" role="data" />
+   <file baseinstalldir="/" md5sum="45a18b527da72355a0eca3c9efe4cb0e" name="Structures/locale/de_DE.utf8/messages.po" role="data" />
   </dir>
  </contents>
  <dependencies>
